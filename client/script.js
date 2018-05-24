@@ -37,6 +37,18 @@ $(function () {
     $('span').hide();
     return;
   }
+  //  génère la liste d'utilisateurs pour un lobby
+  var user_list_html = function(lobby){
+    var spanusers = $("<div>connected users :</div>");
+      for(var j = 0; j < lobby.users.length; j++){
+        var spanuser = $("<span></span>");
+        spanuser.text(lobby.users[j]);
+        spanusers.append(spanuser);
+      }
+    return spanusers;
+  }
+
+
   // open connection
   var connection = new WebSocket('ws://127.0.0.1:1337');
   connection.onopen = function () {
@@ -111,23 +123,20 @@ $(function () {
       var lobby = json;
 
       //  print users
-      var container = $('<div class="chat_container"></div>')
-      var userlist = $("<div></div>");
+      var container = $('<div class="chat_container"></div>');
+      var userlist = $('<div class="userlist"></div>');
       var content = $('<div class="chat_window"></div>');
-      var textinput = $('<input type="text" class="lobby_chat_input"/>')
+      var textinput = $('<input type="text" class="lobby_chat_input" placeholder="Ecrivez un message, Entrée pour valider"/>');
+      var readybutton = $('<button class="lobby_button_ready">Je suis READY</button>');
       content.addClass("lobby");
 
-      var spanusers = $("<span></span>");
-      for(var j = 0; j < lobby.users.length; j++){
-        var spanuser = $("<span></span>");
-        spanuser.text(lobby.users[j]);
-        spanusers.append(spanuser);
-      }
+      var spanusers = user_list_html(lobby);
       userlist.append(spanusers);
 
       container.append(userlist);
       container.append(content);
       container.append(textinput);
+      container.append(readybutton);
 
       main.append(container);
 
@@ -139,11 +148,30 @@ $(function () {
         }
       });
 
+      $(".lobby_button_ready").on("click", function(){
+        var message = { "type" : "lobby_user_ready", "lobby": current_lobby, "user" : pseudo };
+        connection.send(JSON.stringify(message));
+
+        console.log("I'm ready");
+        $(".lobby_button_ready").css("color", "green");
+        $(".lobby_button_ready").attr("disabled", "disabled");
+
+      });
+
 
     }
+    //  rechargement utilisateurs d'un seul lobby
+    else if(json.type === "reload_lobby"){
+      console.log("reload_lobby");
+      var lobby = json;
+
+      var userhtml = user_list_html(lobby);
+      $(".userlist").html(userhtml);
+    }
+
     else if(json.type === 'lobby_chat_message'){
       var div = $('<div class="chat_message"></div>');
-      div.text(json.message);
+      div.text("("+ json.time +")"+json.user + " : " +json.message);
       $('.chat_window').append(div);
     }
 

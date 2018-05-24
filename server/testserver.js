@@ -9,18 +9,24 @@ var http = require('http');
 /**
  * Global variables
  */
-// lobbies
+//  lobbies
+//    users contient les usernames
+//    connect contient l'index des users connectés 
+//    ready contient l'état ready ou non pour les users de la liste userss
 var lobbies = 
 [ 
-  { name : "Buveurs", users : [], connect : [] }, 
-  { name : "BLABLA", users : [], connect: [] } 
+  { name : "Buveurs", users : [], connect : [], ready: [] }, 
+  { name : "BLABLA", users : [], connect: [], ready: [] } 
 ];
+
 
 /*var single_lobby = { name : "Buveurs", users : ["Antaniukas", "Six Roses", "Soiffard"] };
 lobbies.push(single_lobby);*/
 
 // list of currently connected clients (users)
 var clients = [ ];
+//  liste des noms des clients, pour prévenir les doublons
+var client_names = [ ];
 /**
  * Helper function for escaping input strings
  */
@@ -50,6 +56,49 @@ var wsServer = new webSocketServer({
   httpServer: server
 });
 
+var reload_lobby_users = function(current_lobby, lobby_id){
+  var json_send = { type : "reload_lobby", lobby : "vomir", users : current_lobby.users };
+  for(var i = 0; i < current_lobby.connect.length; i++){
+    console.log("reloadlobby");
+    console.log(current_lobby.connect[i]);
+    clients[current_lobby.connect[i]].sendUTF(  JSON.stringify(json_send)  );
+  }
+
+}
+
+var start_match = function(){
+  console.log("--- Match started ---");
+  //  API, request match
+  
+
+  //  Match begin
+  //  Send round data to clients
+    //  Wait for match end
+    //  Trigger next round
+
+  //  End match
+    //  Send back to lobby
+
+};
+
+var check_lobby_ready = function(current_lobby){
+  var total_users = current_lobby.users.length;
+  var total_users_ready = 0;
+
+  if(total_users <= 0){
+    return null;
+  }
+
+  for(var i = 0; i < total_users; i++){
+    if(current_lobby.ready[i] === true){
+      total_users_ready++;
+    }
+  }
+
+  if(total_users_ready / total_users >= 0.75){
+      start_match();
+  }
+};
 
 //  Triggered on connect
 wsServer.on('request', function(request) {
@@ -80,30 +129,54 @@ wsServer.on('request', function(request) {
           current_lobby.users.push(json_message.user);
           current_lobby.connect.push( index );
           
-
-          //  STOCKER LES connects par lobby...
           //current_lobby.connect.push(connection);
           console.log("lobbies update");
 
+          //  load_lobby déplace l'utilisateur dans le lobby
           var message = { type : "load_lobby", lobby : json_message.lobby, users : current_lobby.users };  
           connection.sendUTF( JSON.stringify(message) );
+
+          //  On met à jour la liste des utilisateurs qui sont déjà dans le lobby.
+          reload_lobby_users(current_lobby, 1);
         }
         else if(json_message.type === 'pseudo'){
           pseudo = json_message.pseudo;
 
+          //  une fois le pseudo envoyé, on lui envoie la liste des lobbies.
           connection.sendUTF(
             JSON.stringify({ type:'lobbies_list', data: lobbies }));
         }
         else if(json_message.type === 'lobby_chat_message'){
+          
+          //  get current time for message send
+          var dateTime = require('node-datetime');
+          var dt = dateTime.create();
+          var formatted = dt.format('H:M:S');
+          
           //  Broadcast message for lobby only.
-          var json_send = JSON.stringify({ type:'lobby_chat_message', message: json_message.message, user : pseudo });
+          var json_send = JSON.stringify({ type:'lobby_chat_message', message: json_message.message, user : pseudo, time: formatted });
           var current_lobby = lobbies[json_message.lobby];
 
-          console.log(json_message);
-
+          //console.log(json_message);
           for (var i=0; i < current_lobby.connect.length; i++) {
             clients[current_lobby.connect[i]].sendUTF(json_send);
           }
+        }
+
+        else if(json_message.type === 'lobby_user_ready'){
+          //  Un user est ready, on change son état
+          //  Si le % de personnes ready dépasse 75%, on lance la partie pour tous les joueurs du lobby.
+          var current_lobby = lobbies[parseInt(json_message.lobby)];
+          var total_users = current_lobby.users.length;
+
+          for(var i = 0; i < total_users; i++){
+            if(json_message.user == current_lobby.users[i]){
+              current_lobby.ready[i] = true;
+            }
+          }
+          check_lobby_ready(current_lobby);
+
+
         }
     }
   });
@@ -117,12 +190,20 @@ wsServer.on('request', function(request) {
     console.log(pseudo + " s'est déconnecté...");
 
     //  On supprime le user s'il est connecté dans un des lobby.
+    //  On doit aussi supprimer le connect correspondant au user.
+    //  On doit aussi supprimer le ready correspondant au user.
+    //  S'il a quitté un lobby, on remet les (autres) clients du lobby à jour.
+    //  S'il a quitté un lobby, on revérifie si les clients présents sont ready
     for(var i = 0; i < lobbies.length; i++){
       var tab = lobbies[i].users;
-      var truc = tab.indexOf(pseudo);
-      if( truc !== -1){
-        lobbies[i].users.splice(truc, 1);
-      } 
+      var userIndex = tab.indexOf(pseudo);
+      if( userIndex !== -1){
+        lobbies[i].users.splice(userIndex, 1);
+        lobbies[i].connect.splice(userIndex, 1);
+        lobbies[i].ready.splice(userIndex, 1);
+        reload_lobby_users(lobbies[i], 1);
+        check_lobby_ready(lobbies[i]);
+      }
     }
   });
 });
