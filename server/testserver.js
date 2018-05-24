@@ -1,4 +1,39 @@
 "use strict";
+
+/*
+**  countdown démarre un timer, et lance l'exécution de func à la fin du timer
+**  args sera passé à func lors de l'appel
+**  On peut mettre à jour un élément HTML à l'aide de target, représentant une classe CSS
+**  time est en ms, doit être multiple de 1000
+*/
+function countdown(time, func, args, target){
+  
+  var countdownInterval;
+  //if(target !== null){
+    //$(target).html(time/1000);
+    countdownInterval = setInterval(function() {
+      time = time - 1000;
+      //$(target).html(time/1000);
+      if(time == 0){
+        clearInterval(countdownInterval);
+        if(args !== null){
+          func(args);
+        }
+        else{
+          func();
+        }
+        
+      }
+      else{
+        //console.log("not up");
+      }
+      }, 1000);
+  }
+  /*else{
+    setTimeout(func, time);
+  }*/
+
+
 // Optional. You will see this name in eg. 'ps' or 'top' command
 process.title = 'node-chat';
 // Port where we'll run the websocket server
@@ -56,6 +91,10 @@ var wsServer = new webSocketServer({
   httpServer: server
 });
 
+
+
+
+
 var reload_lobby_users = function(current_lobby, lobby_id){
   var json_send = { type : "reload_lobby", lobby : "vomir", users : current_lobby.users };
   for(var i = 0; i < current_lobby.connect.length; i++){
@@ -64,12 +103,83 @@ var reload_lobby_users = function(current_lobby, lobby_id){
     clients[current_lobby.connect[i]].sendUTF(  JSON.stringify(json_send)  );
   }
 
+};
+
+//  Envoie aux clients du lobby l'ordre de jouer le round.
+var play_round = function(args){
+  var message = { type : "play_round", round: args.match.rounds[args.roundIndex] };
+  for (var i=0; i < lobby[args.lobby].connect.length; i++) {
+    clients[].sendUTF(json_send);
+  }
+        
+
+};
+
+//  args contient
+//    roundIndex l'index du round courant
+//    match l'objet match provenant de l'API
+var start_round = function(args){
+  //  start round
+  console.log("Nous sommes au round : " + args.roundIndex);
+
+  //  démarrage du round, end_round sera exécuté à la fin du timer
+  countdown(15000, end_round, args);
+  play_round(args.rounds[args.roundIndex]);
+};
+
+
+//  Démarre le round suivant s'il y en a un
+//  Termine la partie dans les autres cas
+var end_round = function(args){
+  // end round
+  if(++args.roundIndex < args.match.rounds.length){
+    start_round(args);
+  }
+  else{
+    console.log("Il n'y a plus de rounds ;(");
+  }
+
 }
 
-var start_match = function(){
+var start_match = function(lobby){
   console.log("--- Match started ---");
   //  API, request match
+  var options = {
+    host: "v2.com",
+    port: 80,
+    path: '/index.php/api',
+    method: 'GET'
+  };
+  var data;
+
+  http.request(options, function(res) {
+    //console.log('STATUS: ' + res.statusCode);
+    //console.log('HEADERS: ' + JSON.stringify(res.headers));
+    res.setEncoding('utf8');
+    res.on('data', function (chunk) {
+      data = chunk;
+      var json;
+      try{
+        console.log(data);
+        json = JSON.parse(data);
+      }catch(error){
+        console.log("error parsing API's JSON");
+        return null;
+      }
+      var match = json.data[0];
+      
+
+      //  startup match
+      var args = { "lobby" : lobby, "roundIndex" : 0, "match" : match };
+      start_round(args);
+
+      //  Les rounds se déroulent via callbacks.
+    });
+  }).end();
+
   
+
+
 
   //  Match begin
   //  Send round data to clients
