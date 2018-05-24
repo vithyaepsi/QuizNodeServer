@@ -95,7 +95,7 @@ var wsServer = new webSocketServer({
 
 
 
-var reload_lobby_users = function(current_lobby, lobby_id){
+var reload_lobby_users = function(current_lobby){
   var json_send = { type : "reload_lobby", lobby : "vomir", users : current_lobby.users };
   for(var i = 0; i < current_lobby.connect.length; i++){
     console.log("reloadlobby");
@@ -108,9 +108,11 @@ var reload_lobby_users = function(current_lobby, lobby_id){
 //  Envoie aux clients du lobby l'ordre de jouer le round.
 var play_round = function(args){
   var message = { type : "play_round", round: args.match.rounds[args.roundIndex] };
-  for (var i=0; i < lobby[args.lobby].connect.length; i++) {
-    clients[].sendUTF(json_send);
+
+  for (var i=0; i < lobbies[args.lobby].connect.length; i++) {
+    clients[lobbies[args.lobby].connect[i]].sendUTF(JSON.stringify(message));
   }
+
         
 
 };
@@ -124,7 +126,7 @@ var start_round = function(args){
 
   //  démarrage du round, end_round sera exécuté à la fin du timer
   countdown(15000, end_round, args);
-  play_round(args.rounds[args.roundIndex]);
+  play_round(args);
 };
 
 
@@ -136,7 +138,7 @@ var end_round = function(args){
     start_round(args);
   }
   else{
-    console.log("Il n'y a plus de rounds ;(");
+    console.log("Il n'y a plus de rounds, woohoo");
   }
 
 }
@@ -191,7 +193,7 @@ var start_match = function(lobby){
 
 };
 
-var check_lobby_ready = function(current_lobby){
+var check_lobby_ready = function(current_lobby, lobby_id){
   var total_users = current_lobby.users.length;
   var total_users_ready = 0;
 
@@ -206,7 +208,7 @@ var check_lobby_ready = function(current_lobby){
   }
 
   if(total_users_ready / total_users >= 0.75){
-      start_match();
+      start_match(lobby_id);
   }
 };
 
@@ -284,7 +286,7 @@ wsServer.on('request', function(request) {
               current_lobby.ready[i] = true;
             }
           }
-          check_lobby_ready(current_lobby);
+          check_lobby_ready(current_lobby, parseInt(json_message.lobby));
 
 
         }
@@ -312,7 +314,7 @@ wsServer.on('request', function(request) {
         lobbies[i].connect.splice(userIndex, 1);
         lobbies[i].ready.splice(userIndex, 1);
         reload_lobby_users(lobbies[i], 1);
-        check_lobby_ready(lobbies[i]);
+        check_lobby_ready(lobbies[i], i);
       }
     }
   });

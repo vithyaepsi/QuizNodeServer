@@ -175,6 +175,11 @@ $(function () {
       $('.chat_window').append(div);
     }
 
+    else if(json.type === "play_round"){
+      console.log("je joue le round t'as vu");
+
+    }
+
   }
 
   
