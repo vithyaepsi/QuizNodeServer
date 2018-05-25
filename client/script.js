@@ -4,6 +4,7 @@ $(function () {
   // for better performance - to avoid searching in DOM
   var main = $('.container');
   var input = $(' #pseudo');
+  //var lobbyId = null;
 
   var pseudo = "";
   var current_lobby = "";
@@ -58,6 +59,8 @@ $(function () {
 
     var lobby = json;
     console.log(lobby);
+    //  remember lobbyID
+    //lobbyId = json.lobby;
 
     var container = $('<div class="chat_container"></div>');
     var header = $('<div>Lobby : '+ lobby.name +'</div>');
@@ -101,6 +104,7 @@ $(function () {
   }
 
 
+
   // open connection
   var connection = new WebSocket('ws://127.0.0.1:1337');
   connection.onopen = function () {
@@ -108,6 +112,15 @@ $(function () {
     console.log("opened");
   };
   connection.onmessage = function (message) {
+
+      var send_answer = function(lobbyId, answerId, pseudo){
+        var message = { "type" : "answer", "lobby" : lobbyId, "answer": answerId, "user" : pseudo };
+        console.log(message);
+
+        connection.send(JSON.stringify(message));
+      };
+
+
     // try to parse JSON message. Because we know that the server
     // always returns JSON this should work without any problem but
     // we should make sure that the massage is not chunked or
@@ -223,19 +236,36 @@ $(function () {
       }
 
       var answers = json.round.answers;
+      var div_answers_container = $('<div class="answers_sub_container"></div>');
+      div_answers.append(div_answers_container);
 
       for(var i = 0; i < answers.length; i++){
-        var div_answer = $('<div></div>');
-        console.log(answers[i]);
-        div_answer.text(answers[i].text);
+        var div_answer = $('<div data-id="'+i+'" class="answer"></div>');
+        var div_answer_text = $('<div class="text"></div>');
+        var div_answer_notifier = $('<div class="notifier"></div>');
 
-        div_answers.append(div_answer);
+        var aaa = parseInt(json.lobby);
+
+        //  On click
+        div_answer.on("click", function(){
+          send_answer(aaa, $(this).data("id"), pseudo);
+
+
+          //  kill the click event on all answers.
+          $('.game_window .answer').unbind("click");
+        });
+
+        div_answer_text.text(answers[i].text);
+
+        div_answer.append(div_answer_text);
+        div_answer.append(div_answer_notifier);
+
+        div_answers_container.append(div_answer);
       }
 
       game_window.append(div_header);
       game_window.append(div_question);
       game_window.append(div_answers);
-
 
     }
 
@@ -243,6 +273,12 @@ $(function () {
       $(".container>div").removeClass("game_active");
 
       load_lobby(json);
+    }
+
+    else if(json.type === "notify_answer"){
+      console.log("il semblerait que "+json.user + " ait répondu à la question en cours");
+
+
     }
 
   }

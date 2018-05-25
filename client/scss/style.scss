@@ -47,7 +47,7 @@ html, body{
 			flex-grow	:	1;
 
 			.question_header{
-
+				text-align	:	center;
 
 			}
 		}
@@ -58,7 +58,6 @@ html, body{
 			display	:	flex;
 			flex-grow	:	50;
 
-
 			img{
 				width	:	100%;
 				object-fit	:	contain;
@@ -68,7 +67,23 @@ html, body{
 		}
 		.answers_container{
 			flex-grow	:	1;
+			.answers_sub_container{
+				display	:	flex;
+				justify-content	:	space-evenly;
+				flex-wrap	:	wrap;
 
+				margin	:	10px;
+
+				.answer{
+
+
+
+					.notifier, .text{
+						min-width	:	250px;
+						text-align	:	center;
+					}
+				}
+			}
 		}
 	}
 	

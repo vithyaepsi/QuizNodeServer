@@ -31,6 +31,8 @@ html, body {
       height: 75%; }
     .container .game_window .header_container {
       flex-grow: 1; }
+      .container .game_window .header_container .question_header {
+        text-align: center; }
     .container .game_window .question_container {
       /*width	:	100%;
       height	:	100%;*/
@@ -41,5 +43,13 @@ html, body {
         object-fit: contain; }
     .container .game_window .answers_container {
       flex-grow: 1; }
+      .container .game_window .answers_container .answers_sub_container {
+        display: flex;
+        justify-content: space-evenly;
+        flex-wrap: wrap;
+        margin: 10px; }
+        .container .game_window .answers_container .answers_sub_container .answer .notifier, .container .game_window .answers_container .answers_sub_container .answer .text {
+          min-width: 250px;
+          text-align: center; }
 
 /*# sourceMappingURL=style.css.map */

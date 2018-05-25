@@ -50,8 +50,8 @@ var http = require('http');
 //    ready contient l'état ready ou non pour les users de la liste userss
 var lobbies = 
 [ 
-  { name : "Buveurs", users : [], connect : [], ready: [], running : false }, 
-  { name : "BLABLA", users : [], connect: [], ready: [], running : false } 
+  { name : "Buveurs", users : [], connect : [], ready: [], running : false, roundIndex: 0, answers: [] }, 
+  { name : "BLABLA", users : [], connect: [], ready: [], running : false, roundIndex:0, answers: [] } 
 ];
 
 
@@ -95,7 +95,12 @@ var wsServer = new webSocketServer({
 
 
 
-
+var notify_lobby_answer = function(current_lobby, userIndex, answerId){
+  var json_send = { type : "notify_answer", "user" : userIndex, "answerId" : answerId };
+  for(var i = 0; i < current_lobby.connect.length; i++){
+    clients[current_lobby.connect[i]].sendUTF(  JSON.stringify(json_send)  );
+  }
+}
 
 var reload_lobby_users = function(current_lobby){
   var json_send = { type : "reload_lobby", lobby : "vomir", users : current_lobby.users };
@@ -135,7 +140,8 @@ var check_lobby_ready = function(current_lobby, lobby_id){
 
 //  Envoie aux clients du lobby l'ordre de jouer le round.
 var play_round = function(args){
-  var message = { type : "play_round", round: args.match.rounds[args.roundIndex] };
+  var message = { type : "play_round", lobby: args.lobby, round: args.match.rounds[args.roundIndex] };
+  lobbies[args.lobby].roundIndex = args.roundIndex;
 
   for (var i=0; i < lobbies[args.lobby].connect.length; i++) {
     clients[lobbies[args.lobby].connect[i]].sendUTF(JSON.stringify(message));
@@ -211,11 +217,23 @@ var start_match = function(lobbyId){
         return null;
       }
       var match = json.data[0];
+      var roundCount = match.rounds.length;
       
+      //  INIT current_lobby.answers, it never was
+      for(var i = 0; i < lobbies[lobbyId].users.length; i++){
+        var tab = [];
+        for(var j = 0; j < roundCount; j++){
+          tab.push(-1);
+        }
+        lobbies[lobbyId].answers.push(tab);
+      }
+      console.log(lobbies[lobbyId].answers);
 
       //  startup match
       var args = { "lobby" : lobbyId, "roundIndex" : 0, "match" : match };
       start_round(args);
+
+
 
       //  Les rounds se déroulent via callbacks.
     });
@@ -239,6 +257,12 @@ wsServer.on('request', function(request) {
       lobby.ready[i] = null;
     }
   }
+
+  var find_user_index = function(pseudo, lobbyId){
+    var tab = lobbies[lobbyId].users;
+    var userIndex = tab.indexOf(pseudo);
+    return userIndex;
+  };
 
   var pseudo = "";
 
@@ -316,6 +340,36 @@ wsServer.on('request', function(request) {
 
 
         }
+
+        //  Le joueur répond à une question
+        else if(json_message.type === 'answer'){
+          console.log(json_message);
+          var current_lobby = lobbies[json_message.lobby];
+          console.log(current_lobby);
+          if(current_lobby.running !== false){
+            var userIndex = find_user_index(json_message.user, json_message.lobby);
+
+
+
+            if(userIndex != -1 
+              && typeof(current_lobby.answers[userIndex]) != 'undefined' 
+              && typeof(current_lobby.answers[userIndex][current_lobby.roundIndex]) != 'undefined' 
+
+            ){
+              current_lobby.answers[userIndex][current_lobby.roundIndex] = json_message.answer;
+
+              //  On notifie tous les joueurs du lobby que quelqu'un a joué.
+              notify_lobby_answer(current_lobby, userIndex, json_message.answer);
+              console.log(current_lobby.answers);
+            }
+            else{
+              console.log("déjà répondu ???");
+            }
+          }
+          else{
+            console.log("someone tried to play in a non running game.");
+          }
+        }
     }
   });
 
@@ -334,8 +388,7 @@ wsServer.on('request', function(request) {
     //  S'il a quitté un lobby avec un jeu en cours, on remet les users du lobby unready
     //  S'il a quitté un lobby, on revérifie si les clients présents sont ready
     for(var i = 0; i < lobbies.length; i++){
-      var tab = lobbies[i].users;
-      var userIndex = tab.indexOf(pseudo);
+      var userIndex = find_user_index(pseudo, i);
       if( userIndex !== -1){
         lobbies[i].users.splice(userIndex, 1);
         lobbies[i].connect.splice(userIndex, 1);
