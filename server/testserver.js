@@ -50,8 +50,8 @@ var http = require('http');
 //    ready contient l'état ready ou non pour les users de la liste userss
 var lobbies = 
 [ 
-  { name : "Buveurs", users : [], connect : [], ready: [] }, 
-  { name : "BLABLA", users : [], connect: [], ready: [] } 
+  { name : "Buveurs", users : [], connect : [], ready: [], running : false }, 
+  { name : "BLABLA", users : [], connect: [], ready: [], running : false } 
 ];
 
 
@@ -95,6 +95,8 @@ var wsServer = new webSocketServer({
 
 
 
+
+
 var reload_lobby_users = function(current_lobby){
   var json_send = { type : "reload_lobby", lobby : "vomir", users : current_lobby.users };
   for(var i = 0; i < current_lobby.connect.length; i++){
@@ -105,93 +107,6 @@ var reload_lobby_users = function(current_lobby){
 
 };
 
-//  Envoie aux clients du lobby l'ordre de jouer le round.
-var play_round = function(args){
-  var message = { type : "play_round", round: args.match.rounds[args.roundIndex] };
-
-  for (var i=0; i < lobbies[args.lobby].connect.length; i++) {
-    clients[lobbies[args.lobby].connect[i]].sendUTF(JSON.stringify(message));
-  }
-
-        
-
-};
-
-//  args contient
-//    roundIndex l'index du round courant
-//    match l'objet match provenant de l'API
-var start_round = function(args){
-  //  start round
-  console.log("Nous sommes au round : " + args.roundIndex);
-
-  //  démarrage du round, end_round sera exécuté à la fin du timer
-  countdown(15000, end_round, args);
-  play_round(args);
-};
-
-
-//  Démarre le round suivant s'il y en a un
-//  Termine la partie dans les autres cas
-var end_round = function(args){
-  // end round
-  if(++args.roundIndex < args.match.rounds.length){
-    start_round(args);
-  }
-  else{
-    console.log("Il n'y a plus de rounds, woohoo");
-  }
-
-}
-
-var start_match = function(lobby){
-  console.log("--- Match started ---");
-  //  API, request match
-  var options = {
-    host: "v2.com",
-    port: 80,
-    path: '/index.php/api',
-    method: 'GET'
-  };
-  var data;
-
-  http.request(options, function(res) {
-    //console.log('STATUS: ' + res.statusCode);
-    //console.log('HEADERS: ' + JSON.stringify(res.headers));
-    res.setEncoding('utf8');
-    res.on('data', function (chunk) {
-      data = chunk;
-      var json;
-      try{
-        console.log(data);
-        json = JSON.parse(data);
-      }catch(error){
-        console.log("error parsing API's JSON");
-        return null;
-      }
-      var match = json.data[0];
-      
-
-      //  startup match
-      var args = { "lobby" : lobby, "roundIndex" : 0, "match" : match };
-      start_round(args);
-
-      //  Les rounds se déroulent via callbacks.
-    });
-  }).end();
-
-  
-
-
-
-  //  Match begin
-  //  Send round data to clients
-    //  Wait for match end
-    //  Trigger next round
-
-  //  End match
-    //  Send back to lobby
-
-};
 
 var check_lobby_ready = function(current_lobby, lobby_id){
   var total_users = current_lobby.users.length;
@@ -212,8 +127,119 @@ var check_lobby_ready = function(current_lobby, lobby_id){
   }
 };
 
-//  Triggered on connect
+//  Pour toutes les fonctions prenant args en argument :
+//  args contient
+//    roundIndex  l'index du round courant
+//    lobby   l'index du lobby dans lobbies
+//    match   l'objet match provenant de l'API
+
+//  Envoie aux clients du lobby l'ordre de jouer le round.
+var play_round = function(args){
+  var message = { type : "play_round", round: args.match.rounds[args.roundIndex] };
+
+  for (var i=0; i < lobbies[args.lobby].connect.length; i++) {
+    clients[lobbies[args.lobby].connect[i]].sendUTF(JSON.stringify(message));
+  }
+
+
+};
+
+//  send match_end signal to users
+//  lorsque le match se termine, plus personne dans le lobby n'est ready.
+var end_match = function(args){
+  var message = { type : "match_end", name : lobbies[args.lobby].name, lobby : args.lobby, users : lobbies[args.lobby].users };  
+  for (var i=0; i < lobbies[args.lobby].connect.length; i++) {
+    clients[lobbies[args.lobby].connect[i]].sendUTF( JSON.stringify(message) );
+    lobbies[args.lobby].ready[i] = null;
+  }
+
+  console.log("--- Match ended ---");
+  lobbies[args.lobby].running = false;
+};
+
+
+var start_round = function(args){
+  //  start round
+  console.log("Nous sommes au round : " + args.roundIndex);
+
+  //  démarrage du round, end_round sera exécuté à la fin du timer
+  countdown(15000, end_round, args);
+  play_round(args);
+};
+
+
+//  Démarre le round suivant s'il y en a un
+//  Termine la partie dans les autres cas
+var end_round = function(args){
+  // end round
+  if(++args.roundIndex < args.match.rounds.length){
+    start_round(args);
+  }
+  else{
+    end_match(args);
+  }
+
+}
+
+
+var start_match = function(lobbyId){
+  console.log("--- Match started ---");
+  lobbies[lobbyId].running = true;
+
+
+  //  API, request match
+  var options = {
+    host: "v2.com",
+    port: 80,
+    path: '/index.php/api',
+    method: 'GET'
+  };
+  var data;
+
+  http.request(options, function(res) {
+    //console.log('STATUS: ' + res.statusCode);
+    //console.log('HEADERS: ' + JSON.stringify(res.headers));
+    res.setEncoding('utf8');
+    res.on('data', function (chunk) {
+      data = chunk;
+      var json;
+      try{
+        console.log(data);
+        json = JSON.parse(data);
+      }catch(error){
+        console.log("*** error parsing API's JSON ***");
+        return null;
+      }
+      var match = json.data[0];
+      
+
+      //  startup match
+      var args = { "lobby" : lobbyId, "roundIndex" : 0, "match" : match };
+      start_round(args);
+
+      //  Les rounds se déroulent via callbacks.
+    });
+  }).end();
+
+};
+
+
+
+
+
+
+
+//
+//  Server connect
 wsServer.on('request', function(request) {
+
+
+  var unready_lobby_users = function(lobby){
+    for (var i=0; i < lobby.connect.length; i++) {
+      lobby.ready[i] = null;
+    }
+  }
+
   var pseudo = "";
 
 
@@ -245,7 +271,7 @@ wsServer.on('request', function(request) {
           console.log("lobbies update");
 
           //  load_lobby déplace l'utilisateur dans le lobby
-          var message = { type : "load_lobby", lobby : json_message.lobby, users : current_lobby.users };  
+          var message = { type : "load_lobby", name : lobbies[json_message.lobby].name, lobby : json_message.lobby, users : current_lobby.users };  
           connection.sendUTF( JSON.stringify(message) );
 
           //  On met à jour la liste des utilisateurs qui sont déjà dans le lobby.
@@ -305,6 +331,7 @@ wsServer.on('request', function(request) {
     //  On doit aussi supprimer le connect correspondant au user.
     //  On doit aussi supprimer le ready correspondant au user.
     //  S'il a quitté un lobby, on remet les (autres) clients du lobby à jour.
+    //  S'il a quitté un lobby avec un jeu en cours, on remet les users du lobby unready
     //  S'il a quitté un lobby, on revérifie si les clients présents sont ready
     for(var i = 0; i < lobbies.length; i++){
       var tab = lobbies[i].users;
@@ -313,8 +340,11 @@ wsServer.on('request', function(request) {
         lobbies[i].users.splice(userIndex, 1);
         lobbies[i].connect.splice(userIndex, 1);
         lobbies[i].ready.splice(userIndex, 1);
+        unready_lobby_users(lobbies[i]);
         reload_lobby_users(lobbies[i], 1);
         check_lobby_ready(lobbies[i], i);
+        
+
       }
     }
   });

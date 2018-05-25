@@ -7,9 +7,10 @@ $(function () {
 
   var pseudo = "";
   var current_lobby = "";
+  input.focus();
 
 
-  //  Appuyez sur entrée 
+  //  Entrez votre pseudo pour commencer 
   input.on("keydown", function(e){
     if (e.keyCode === 13) {
       var msg = $(this).val();
@@ -19,6 +20,9 @@ $(function () {
       pseudo = msg;
       var message = { "type" : "pseudo", "pseudo" : msg };
       connection.send(JSON.stringify(message));
+
+      main.html('');
+      $(window).focus();
 
     }
   });
@@ -48,6 +52,54 @@ $(function () {
     return spanusers;
   }
 
+  var load_lobby = function(json){
+    console.log("loading lobby");
+    main.html('');
+
+    var lobby = json;
+    console.log(lobby);
+
+    var container = $('<div class="chat_container"></div>');
+    var header = $('<div>Lobby : '+ lobby.name +'</div>');
+    var userlist = $('<div class="userlist"></div>');
+    var content = $('<div class="chat_window"></div>');
+    var textinput = $('<input type="text" class="lobby_chat_input" placeholder="Ecrivez un message, Entrée pour valider"/>');
+    var readybutton = $('<button class="lobby_button_ready">Je suis READY</button>');
+
+    var game_window = $('<div class="game_window">En attente du lancement de la partie</div>');
+    content.addClass("lobby");
+
+    var spanusers = user_list_html(lobby);
+    userlist.append(spanusers);
+
+    container.append(header);
+    container.append(userlist);
+    container.append(content);
+    container.append(textinput);
+    container.append(readybutton);
+
+    main.append(container);
+    main.append(game_window);
+
+    $(".lobby_chat_input").on("keydown", function(e){
+      if (e.keyCode === 13) {
+        var message = { "type" : "lobby_chat_message", "message" : $(".lobby_chat_input").val(), "lobby" : current_lobby };
+        connection.send(JSON.stringify(message));
+        $(".lobby_chat_input").val('');
+      }
+    });
+
+    $(".lobby_button_ready").on("click", function(){
+      var message = { "type" : "lobby_user_ready", "lobby": current_lobby, "user" : pseudo };
+      connection.send(JSON.stringify(message));
+
+      console.log("I'm ready");
+      $(".lobby_button_ready").css("color", "green");
+      $(".lobby_button_ready").attr("disabled", "disabled");
+
+    });
+  }
+
 
   // open connection
   var connection = new WebSocket('ws://127.0.0.1:1337');
@@ -63,7 +115,7 @@ $(function () {
     try {
       json = JSON.parse(message.data);
     } catch (e) {
-      console.log('Invalid JSON: ', message.data);
+      console.log('Invalid JSON: please kindly fuck off ', message.data);
       return;
     }
 
@@ -79,7 +131,7 @@ $(function () {
       for(var i = 0; i < lobbyCount; i++){
         var lobby = json.data[i];
 
-        var container = $('<div class="lobby container"></div>')
+        var container = $('<div class="lobby_container"></div>')
         var header = $("<div>"+ lobby.name +"</div>");
         var content = $("<div></div>");
         content.addClass("lobby");
@@ -93,6 +145,10 @@ $(function () {
         }
 
         var join = $('<button data-join="'+ i +'">Join lobby</button>');
+        if( lobby.running !== false ){
+          join.attr("disabled", "disabled");
+          join.text("Game running");
+        }
 
         content.append(uluser);
         content.append(join);
@@ -117,46 +173,7 @@ $(function () {
     //  load_lobby est reçu lorsqu'un lobby a été choisi
     //  On peut alors afficher la salle d'attente
     else if (json.type  === 'load_lobby'){
-      console.log("loading lobby");
-      main.html('');
-
-      var lobby = json;
-
-      //  print users
-      var container = $('<div class="chat_container"></div>');
-      var userlist = $('<div class="userlist"></div>');
-      var content = $('<div class="chat_window"></div>');
-      var textinput = $('<input type="text" class="lobby_chat_input" placeholder="Ecrivez un message, Entrée pour valider"/>');
-      var readybutton = $('<button class="lobby_button_ready">Je suis READY</button>');
-      content.addClass("lobby");
-
-      var spanusers = user_list_html(lobby);
-      userlist.append(spanusers);
-
-      container.append(userlist);
-      container.append(content);
-      container.append(textinput);
-      container.append(readybutton);
-
-      main.append(container);
-
-      $(".lobby_chat_input").on("keydown", function(e){
-        if (e.keyCode === 13) {
-          var message = { "type" : "lobby_chat_message", "message" : $(".lobby_chat_input").val(), "lobby" : current_lobby };
-          connection.send(JSON.stringify(message));
-          $(".lobby_chat_input").val('');
-        }
-      });
-
-      $(".lobby_button_ready").on("click", function(){
-        var message = { "type" : "lobby_user_ready", "lobby": current_lobby, "user" : pseudo };
-        connection.send(JSON.stringify(message));
-
-        console.log("I'm ready");
-        $(".lobby_button_ready").css("color", "green");
-        $(".lobby_button_ready").attr("disabled", "disabled");
-
-      });
+      load_lobby(json);
 
 
     }
@@ -173,11 +190,59 @@ $(function () {
       var div = $('<div class="chat_message"></div>');
       div.text("("+ json.time +")"+json.user + " : " +json.message);
       $('.chat_window').append(div);
+
+      $(".chat_window").scrollTop($(".chat_window")[0].scrollHeight);
     }
 
     else if(json.type === "play_round"){
-      console.log("je joue le round t'as vu");
+      $(".container>div").addClass("game_active");
+      console.log(json);
 
+      var game_window = $(".game_window");
+      game_window.html('');
+
+      var div_header = $('<div class="header_container"></div>');
+      var div_question = $('<div class="question_container"></div>');
+      var div_answers = $('<div class="answers_container"></div>');
+
+      var question_header = $('<h3 class="question_header"></h3>');
+      question_header.text(json.round.question.question_type.text);
+      div_header.append(question_header);
+
+      //  question_type 2 affiche une image
+      if( json.round.question.question_type.id == 2 ){
+        var img = $("<img></img>");
+        img.attr("src", "http://v2.com/img/"+json.round.question.image);
+
+        div_question.append(img);
+
+
+      }
+      else{
+        console.log("pas d'image pour cette question !");
+      }
+
+      var answers = json.round.answers;
+
+      for(var i = 0; i < answers.length; i++){
+        var div_answer = $('<div></div>');
+        console.log(answers[i]);
+        div_answer.text(answers[i].text);
+
+        div_answers.append(div_answer);
+      }
+
+      game_window.append(div_header);
+      game_window.append(div_question);
+      game_window.append(div_answers);
+
+
+    }
+
+    else if(json.type === "match_end"){
+      $(".container>div").removeClass("game_active");
+
+      load_lobby(json);
     }
 
   }
