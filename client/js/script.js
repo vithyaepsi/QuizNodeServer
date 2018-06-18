@@ -103,6 +103,38 @@ $(function () {
     });
   }
 
+  var current_x = null;
+  var current_y = null;
+
+  var handleOrientation = function(event) {
+    current_x = event.alpha;
+    current_y = event.beta;
+
+  }
+  var orientations = [];
+
+  var getOrientation = function(){
+    console.log( "beta : " + current_y + " | alpha : "+ current_x );
+    window.navigator.vibrate(100);
+  }
+
+  var comboCreate = function(){
+    var combo_container = $('<div class="container combo"></div>');
+    var button_set = $('<div class="combo_set"><button>Choisir</button></div>');
+    var button_reset = $('<div class="combo_reset"><button>Recommencer</button></div>');
+
+    combo_container.append(button_set);
+    window.addEventListener('deviceorientation', handleOrientation);
+    button_set.on("click", function(){
+      getOrientation();
+    });
+
+    combo_container.append(button_reset);
+
+    $('.container').addClass('hidden');
+    $('body').append(combo_container);
+  };
+
 
 
   // open connection
@@ -132,11 +164,28 @@ $(function () {
       return;
     }
 
-    //console.log("PRESS X to JSON");
 
-    //    lobbies_list est reçu directement à la connexion
+    if(json.type === 'signUp'){
+      var passinput = $('<div><input type="password" name="password" /></div>');
+      var passinput2 = $('<div><input type="password" name="password_check" /></div>');
+
+      var comboButton = $('<div><button>Créer combinaison</button></div>');
+
+      comboButton.on("click", function(){
+        comboCreate();
+      });
+
+      $(".container").append(passinput);
+      $(".container").append(passinput2);
+      $(".container").append(comboButton);
+
+    }
+    else if(json.type === 'signIn'){
+
+    }
+    //    lobbies_list est reçu directement après l'authentification
     //    On peut recevoir ce message pour recharger la liste de lobbies (lorsque quelqu'un la modifie)
-    if (json.type === 'lobbies_list') { 
+    else if (json.type === 'lobbies_list') { 
       console.log(json);
       main.html('');
 

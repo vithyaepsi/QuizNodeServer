@@ -1,4 +1,17 @@
 "use strict";
+var mysql = require('mysql');
+
+var con = mysql.createConnection({
+  host: "127.0.0.1",
+  user: "bouboule",
+  password: "password",
+  database: "quiz"
+});
+
+con.connect(function(err) {
+  if (err) throw err;
+  console.log("Connected!");
+});
 
 /*
 **  countdown démarre un timer, et lance l'exécution de func à la fin du timer
@@ -304,7 +317,75 @@ wsServer.on('request', function(request) {
         else if(json_message.type === 'pseudo'){
           pseudo = json_message.pseudo;
 
-          //  une fois le pseudo envoyé, on lui envoie la liste des lobbies.
+          //  Gestion de la connexion
+          //  Si le pseudo n'existe pas en base, on demande de créer un mot de passe ou un combo (combo disponible sur mobile)
+          //  S'il existe, on propose l'authentification en mot de passe ou combo
+          var sql = "SELECT name from user WHERE name = ?";
+          var inserts = [pseudo];
+          sql = mysql.format(sql, inserts);
+
+          con.query(sql, function (err, result) {
+            if (err) throw err;
+
+            if(result.length > 0){
+              //  demande l'authentification
+              connection.sendUTF(
+                JSON.stringify({ type:'signIn', data: 0 })
+              );
+            }
+            else{
+              //  demande la création d'un mot de passe ou combo
+              connection.sendUTF(
+                JSON.stringify({ type:'signUp', data: 0 })
+              );
+            }
+          });
+
+
+          /*connection.sendUTF(
+            JSON.stringify({ type:'lobbies_list', data: lobbies })
+          );*/
+
+          
+        }
+        else if(json_message.type === 'createPassword'){
+          
+
+          var passwordHash = require('password-hash');
+          var hashedPassword = passwordHash.generate(json_message.password);
+
+          console.log(hashedPassword); // sha1$3I7HRwy7$cbfdac6008f9cab4083784cbd1874f76618d2a97
+
+          var sql = "INSERT INTO user (name, password) VALUES (?, ?)";
+          var inserts = [pseudo, hashedPassword];
+          sql = mysql.format(sql, inserts);
+
+          con.query(sql, function (err, result) {
+            if (err) throw err;
+            console.log("user inserted");
+          });
+
+
+          pseudo = null;
+          //  user must reconnect
+        }
+        else if(json_message.type === 'createCombo'){
+
+
+          pseudo = null;
+          //  user must reconnect
+        }
+        else if(json_message.type === 'password'){
+
+
+          //  Si authorized, on envoie la liste des lobbies
+          connection.sendUTF(
+            JSON.stringify({ type:'lobbies_list', data: lobbies }));
+        }
+        else if(json_message.type === 'combo'){
+
+
+          //  Si authorized, on envoie la liste des lobbies
           connection.sendUTF(
             JSON.stringify({ type:'lobbies_list', data: lobbies }));
         }
