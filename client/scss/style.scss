@@ -12,6 +12,19 @@ div.container.hidden{
 	flex-direction	:	column;
 	height	:	100%;
 
+	&.combo{
+		.combo_set{
+			min-height:	50%;
+
+		}
+		.combo_validate:disabled{
+			color  : red;
+		}
+		.combo_validate{
+			color	: green;
+		}
+
+	}
 	.chat_container{
 		display	:	flex;
 		height	:	50%;
@@ -82,7 +95,6 @@ div.container.hidden{
 				margin	:	10px;
 
 				.answer{
-
 
 
 					.notifier, .text{

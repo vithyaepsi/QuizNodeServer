@@ -11,6 +11,12 @@ div.container.hidden {
   display: flex;
   flex-direction: column;
   height: 100%; }
+  .container.combo .combo_set {
+    min-height: 50%; }
+  .container.combo .combo_validate:disabled {
+    color: red; }
+  .container.combo .combo_validate {
+    color: green; }
   .container .chat_container {
     display: flex;
     height: 50%;
