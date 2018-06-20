@@ -109,8 +109,9 @@ $(function () {
   var handleOrientation = function(event) {
     current_x = event.alpha;
     current_y = event.beta;
-
   }
+  window.addEventListener('deviceorientation', handleOrientation);
+
   var orientations = [];
   var origin = null;
 
@@ -132,7 +133,7 @@ $(function () {
 
     combo_container.append(text);
     combo_container.append(button_set);
-    window.addEventListener('deviceorientation', handleOrientation);
+
     button_set.on("click", function(){
       var orient = getOrientation();
       window.navigator.vibrate(100);
@@ -274,25 +275,63 @@ $(function () {
 
 
     if(json.type === 'signUp'){
-      var title = $('<h2>Création d\'un nouvel utilisateur</h2>')
-      var passinput = $('<div><input type="password" name="password" placeholder="Mot de passe" /></div>');
+      var title = $('<h2>Création d\'un nouvel utilisateur</h2>');
+      var form = $('<form name="password_form"></form>');
+      var passinput = $('<div><input class="password" type="password" name="password" placeholder="Mot de passe" /></div>');
       var passinput2 = $('<div><input type="password" name="password_check" placeholder="Répétez votre mot de passe" /></div>');
 
       var comboButton = $('<div><button>Créer combinaison</button></div>');
 
       comboButton.on("click", function(){
-        comboCreate();
+        //comboCreate();
+      });
+
+      form.on('submit', function(e){
+        e.preventDefault();
+
+        //  add user ability to enter combo
+        var canCombo = false;
+        if(current_y !== null && current_x !== null){
+          canCombo = true;
+        }
+
+        var message = { "type" : "createPassword", "user" : pseudo, "password" : $('.password').val(), "canCombo" : canCombo };
+        connection.send(JSON.stringify(message));
+
+        //  Le hashage de mot de passe sera fait coté serveur        
       });
 
       $(".container").append(title);
-      $(".container").append(passinput);
-      $(".container").append(passinput2);
-      $(".container").append(comboButton);
+      form.append(passinput);
+      form.append(passinput2);
+      form.append(comboButton);
+      $(".container").append(form);
+      
 
     }
     else if(json.type === 'signIn'){
+      $('.container').html('');
+      var title = $('<h2>Connexion</h2>');
+      var passinput = $('<div><input class="pass" type="password" name="password" placeholder="Mot de passe" /></div>');
 
+      var submitButton = $('<div><button>Envoyer</button></div>');
+
+      submitButton.on("click", function(){
+        var message = { "type" : "password", "pseudo" : pseudo, "pass" : $(".pass").val() };
+        connection.send(JSON.stringify(message));
+        console.log(message);
+      });
+
+      console.log("signIn");
+
+      $(".container").append(title);
+      $(".container").append(passinput);
+      $(".container").append(submitButton);
     }
+    else if(json.type === 'askCombo'){
+       comboCreate();
+    }
+
     //    lobbies_list est reçu directement après l'authentification
     //    On peut recevoir ce message pour recharger la liste de lobbies (lorsque quelqu'un la modifie)
     else if (json.type === 'lobbies_list') { 
@@ -334,7 +373,7 @@ $(function () {
 
       }
       $("button").on("click", function(){
-        var message = { "type" : "lobby_join", "lobby" : $(this).data("join"), "user" : pseudo };
+        var message = { "type" : "lobby_join", "lobby" : $(this).data("join") };
 
         current_lobby = parseInt($(this).data("join"));
         connection.send(JSON.stringify(message));

@@ -216,8 +216,6 @@ var start_match = function(lobbyId){
   var data;
 
   http.request(options, function(res) {
-    //console.log('STATUS: ' + res.statusCode);
-    //console.log('HEADERS: ' + JSON.stringify(res.headers));
     res.setEncoding('utf8');
     res.on('data', function (chunk) {
       data = chunk;
@@ -247,11 +245,23 @@ var start_match = function(lobbyId){
       start_round(args);
 
 
-
       //  Les rounds se déroulent via callbacks.
     });
   }).end();
 
+};
+
+var passHash = function(plainTextPassword){
+  var bcrypt = require('bcrypt');
+  var salt = "caca";
+  var hashedPassword = null;
+
+  bcrypt.genSalt(2, function(err, salt) {
+      bcrypt.hash(plainTextPassword, salt, function(err, hash) {
+          hashedPassword = hash;
+      });
+  });
+  return hashedPassword;
 };
 
 
@@ -301,8 +311,8 @@ wsServer.on('request', function(request) {
         if(json_message.type === 'lobby_join'){
           //  Un user veut rejoindre un lobby
           var current_lobby = lobbies[parseInt(json_message.lobby)];
-          current_lobby.users.push(json_message.user);
-          current_lobby.connect.push( index );
+          current_lobby.users.push(pseudo);
+          current_lobby.connect.push(index);
           
           //current_lobby.connect.push(connection);
           console.log("lobbies update");
@@ -313,6 +323,8 @@ wsServer.on('request', function(request) {
 
           //  On met à jour la liste des utilisateurs qui sont déjà dans le lobby.
           reload_lobby_users(current_lobby, 1);
+
+
         }
         else if(json_message.type === 'pseudo'){
           pseudo = json_message.pseudo;
@@ -348,13 +360,11 @@ wsServer.on('request', function(request) {
 
           
         }
+        //  Le user créé son mot de passe
         else if(json_message.type === 'createPassword'){
-          
 
-          var passwordHash = require('password-hash');
-          var hashedPassword = passwordHash.generate(json_message.password);
-
-          console.log(hashedPassword); // sha1$3I7HRwy7$cbfdac6008f9cab4083784cbd1874f76618d2a97
+          var hashedPassword = passHash(json_message.password);
+          console.log(hashedPassword);
 
           var sql = "INSERT INTO user (name, password) VALUES (?, ?)";
           var inserts = [pseudo, hashedPassword];
@@ -366,16 +376,30 @@ wsServer.on('request', function(request) {
           });
 
 
-          pseudo = null;
-          //  user must reconnect
+          //pseudo = null;
+          //  user must provide a combo if he can
+          //  if he can't he goes straight to signIn
+          if(json_message.canCombo == true){
+            connection.sendUTF(
+              JSON.stringify({ type:'askCombo', data: 0 })
+            );
+          }
+          else{
+            connection.sendUTF(
+              JSON.stringify({ type:'signIn', data: 0 })
+            );
+          }
+          
         }
         else if(json_message.type === 'createCombo'){
 
 
-          pseudo = null;
+          //pseudo = null;
           //  user must reconnect
         }
         else if(json_message.type === 'password'){
+          console.log("password");
+
 
 
           //  Si authorized, on envoie la liste des lobbies
@@ -390,6 +414,7 @@ wsServer.on('request', function(request) {
             JSON.stringify({ type:'lobbies_list', data: lobbies }));
         }
         else if(json_message.type === 'lobby_chat_message'){
+          console.log(lobbies);
           
           //  get current time for message send
           var dateTime = require('node-datetime');
