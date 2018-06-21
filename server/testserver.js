@@ -16,17 +16,13 @@ con.connect(function(err) {
 /*
 **  countdown démarre un timer, et lance l'exécution de func à la fin du timer
 **  args sera passé à func lors de l'appel
-**  On peut mettre à jour un élément HTML à l'aide de target, représentant une classe CSS
 **  time est en ms, doit être multiple de 1000
 */
-function countdown(time, func, args, target){
+function countdown(time, func, args){
   
   var countdownInterval;
-  //if(target !== null){
-    //$(target).html(time/1000);
     countdownInterval = setInterval(function() {
       time = time - 1000;
-      //$(target).html(time/1000);
       if(time == 0){
         clearInterval(countdownInterval);
         if(args !== null){
@@ -38,13 +34,11 @@ function countdown(time, func, args, target){
         
       }
       else{
-        //console.log("not up");
+        //  console.log('still going');
       }
-      }, 1000);
-  }
-  /*else{
-    setTimeout(func, time);
-  }*/
+    }, 1000);
+} 
+
 
 
 // Optional. You will see this name in eg. 'ps' or 'top' command
@@ -210,7 +204,7 @@ var start_match = function(lobbyId){
   var options = {
     host: "v2.com",
     port: 80,
-    path: '/index.php/api',
+    path: '/index.php/api/newMatch',
     method: 'GET'
   };
   var data;
@@ -227,7 +221,7 @@ var start_match = function(lobbyId){
         console.log("*** error parsing API's JSON ***");
         return null;
       }
-      var match = json.data[0];
+      var match = json.data;
       var roundCount = match.rounds.length;
       
       //  INIT current_lobby.answers, it never was
@@ -253,14 +247,9 @@ var start_match = function(lobbyId){
 
 var passHash = function(plainTextPassword){
   var bcrypt = require('bcrypt');
-  var salt = "caca";
-  var hashedPassword = null;
 
-  bcrypt.genSalt(2, function(err, salt) {
-      bcrypt.hash(plainTextPassword, salt, function(err, hash) {
-          hashedPassword = hash;
-      });
-  });
+  var salt = bcrypt.genSaltSync(2);
+  var hashedPassword = bcrypt.hashSync(plainTextPassword, salt);
   return hashedPassword;
 };
 
@@ -273,7 +262,6 @@ var passHash = function(plainTextPassword){
 //
 //  Server connect
 wsServer.on('request', function(request) {
-
 
   var unready_lobby_users = function(lobby){
     for (var i=0; i < lobby.connect.length; i++) {
@@ -332,7 +320,7 @@ wsServer.on('request', function(request) {
           //  Gestion de la connexion
           //  Si le pseudo n'existe pas en base, on demande de créer un mot de passe ou un combo (combo disponible sur mobile)
           //  S'il existe, on propose l'authentification en mot de passe ou combo
-          var sql = "SELECT name from user WHERE name = ?";
+          var sql = "SELECT name, combo from user WHERE name = ?";
           var inserts = [pseudo];
           sql = mysql.format(sql, inserts);
 
@@ -341,8 +329,10 @@ wsServer.on('request', function(request) {
 
             if(result.length > 0){
               //  demande l'authentification
+              var canCombo = (result[0].combo != null);
+
               connection.sendUTF(
-                JSON.stringify({ type:'signIn', data: 0 })
+                JSON.stringify({ type:'signIn', data: 0, canCombo: canCombo })
               );
             }
             else{
@@ -364,6 +354,7 @@ wsServer.on('request', function(request) {
         else if(json_message.type === 'createPassword'){
 
           var hashedPassword = passHash(json_message.password);
+          console.log("pass received :");
           console.log(hashedPassword);
 
           var sql = "INSERT INTO user (name, password) VALUES (?, ?)";
@@ -373,49 +364,138 @@ wsServer.on('request', function(request) {
           con.query(sql, function (err, result) {
             if (err) throw err;
             console.log("user inserted");
+
+            //  user must provide a combo if he can
+            //  if he can't he goes straight to signIn
+            if(json_message.canCombo == true){
+              connection.sendUTF(
+                JSON.stringify({ type:'askCombo', data: 0 })
+              );
+            }
+            else{
+              connection.sendUTF(
+                JSON.stringify({ type:'signIn', data: 0, canCombo : false })
+              );
+            }
           });
 
 
           //pseudo = null;
-          //  user must provide a combo if he can
-          //  if he can't he goes straight to signIn
-          if(json_message.canCombo == true){
-            connection.sendUTF(
-              JSON.stringify({ type:'askCombo', data: 0 })
-            );
-          }
-          else{
-            connection.sendUTF(
-              JSON.stringify({ type:'signIn', data: 0 })
-            );
-          }
-          
         }
         else if(json_message.type === 'createCombo'){
+          console.log(json_message.orientations);
 
+          //  Si le user ne possède pas de combo, on l'ajoute.
+          var sql = "SELECT password, combo from user WHERE name = ?";
+          var inserts = [pseudo];
+          sql = mysql.format(sql, inserts);
 
-          //pseudo = null;
-          //  user must reconnect
+          con.query(sql, function (err, result) {
+            if(result.length > 0){
+              if(result[0].combo != 0){
+                //  Stringify combo for db
+                var combo = JSON.stringify( json_message.orientations );
+
+                var sql2 = "UPDATE user SET combo = ? WHERE name = ?";
+                var inserts = [combo, pseudo];
+                sql2 = mysql.format(sql2, inserts);
+                con.query(sql2, function (err, result) {
+                  if(err) throw err;
+                  //  Success, send to login
+                  console.log("go to login, NOW !");
+                  connection.sendUTF(
+                    JSON.stringify({ type:'signIn', data: 0 , canCombo : true})
+                  );
+                });
+              }
+              else{
+                console.log("combo already exists");
+              }
+            }
+            else{
+              console.log("user does not exist, jackass");
+            }
+          });
+
         }
         else if(json_message.type === 'password'){
-          console.log("password");
 
+          var sql = "SELECT password from user WHERE name = ?";
+          var inserts = [pseudo];
+          sql = mysql.format(sql, inserts);
 
+          con.query(sql, function (err, result) {
+            var bcrypt = require('bcrypt');
+            if( bcrypt.compareSync(json_message.password, result[0].password) ){
+              //  Si authorized, on envoie la liste des lobbies
+              connection.sendUTF(
+                JSON.stringify({ type:'lobbies_list', data: lobbies })
+              );
+            }
+            else{
+              //  Print message
+              console.log("please kindly fuck off");
+            }
+          });
 
-          //  Si authorized, on envoie la liste des lobbies
-          connection.sendUTF(
-            JSON.stringify({ type:'lobbies_list', data: lobbies }));
-        }
-        else if(json_message.type === 'combo'){
-
-
-          //  Si authorized, on envoie la liste des lobbies
-          connection.sendUTF(
-            JSON.stringify({ type:'lobbies_list', data: lobbies }));
-        }
-        else if(json_message.type === 'lobby_chat_message'){
-          console.log(lobbies);
           
+        }
+        else if(json_message.type === 'comboLogin'){
+          console.log("login");
+
+          var sql = "SELECT combo from user WHERE name = ?";
+          var inserts = [pseudo];
+          sql = mysql.format(sql, inserts);
+          con.query(sql, function (err, result) {
+            var storedCombo = JSON.parse(result[0].combo);
+            var sentCombo = JSON.parse(json_message.combo);
+
+            console.log('----');
+            console.log(storedCombo);
+            console.log('----');
+            console.log(sentCombo);
+            console.log('----');
+
+            var offset = 15;
+
+            var invalid = false;
+            if(storedCombo.length == sentCombo.length){
+              for(var i = 0; i < storedCombo.length; i++){
+                if( 
+                  storedCombo[i].alpha-sentCombo[i].alpha < -offset 
+                  || storedCombo[i].alpha-sentCombo[i].alpha > offset 
+                  || storedCombo[i].beta-sentCombo[i].beta < -offset 
+                  || storedCombo[i].beta-sentCombo[i].beta > offset
+                  )
+                {
+                    invalid = true;
+                    break;
+                }
+                else{
+
+                }
+              }
+            }
+            else{
+              invalid = true;
+            }
+
+            if(invalid === false){
+              //  Si authorized, on envoie la liste des lobbies
+              console.log(pseudo+" was authorized by combo");
+              connection.sendUTF(
+                JSON.stringify({ type:'lobbies_list', data: lobbies }));
+            }
+            else{
+              console.log("was invalid...");
+            }
+
+
+          });
+
+          
+        }
+        else if(json_message.type === 'lobby_chat_message'){          
           //  get current time for message send
           var dateTime = require('node-datetime');
           var dt = dateTime.create();
@@ -503,6 +583,7 @@ wsServer.on('request', function(request) {
         reload_lobby_users(lobbies[i], 1);
         check_lobby_ready(lobbies[i], i);
         
+        lobbies[i].answers[userIndex] = [];
 
       }
     }

@@ -1,7 +1,10 @@
 var json;
+screen.orientation.lock('portrait');
+
+var host = "http://192.168.43.175/symserver/public";
+
 $(function () {
   "use strict";
-  // for better performance - to avoid searching in DOM
   var main = $('.container');
   var input = $(' #pseudo');
   //var lobbyId = null;
@@ -122,7 +125,7 @@ $(function () {
   //  le combo est généré à partir d'un point de départ
   //  ce premier point n'est pas conservé
   //  on s'en sert pour générer des offsets
-  //  seuls les offets seront sauvegardés.
+  //  seuls les offsets seront sauvegardés.
   var comboCreate = function(){
     var combo_container = $('<div class="container combo"></div>');
     var text = $('<div class="combo_text">Définir combinaison</div>');
@@ -144,6 +147,9 @@ $(function () {
         //  on transforme orient en offset avant de les stocker
         orient.alpha -= origin.alpha;
         orient.beta -= origin.beta;
+        orient.alpha = parseInt(orient.alpha);
+        orient.beta = parseInt(orient.beta);
+
 
         orientations.push(orient);
       }
@@ -160,10 +166,14 @@ $(function () {
       button_validate.prop('disabled', true);
     });
 
+    // Envoi du combo
     button_validate.on("click", function(){
 
       comboCheck();
       button_validate.prop('disabled', true);
+
+      
+
     });
 
     combo_container.append(button_reset);
@@ -177,9 +187,12 @@ $(function () {
 
   //  redemande à l'utilisateur de valider le combo créé en le refaisant
   var comboCheck = function(){
+    $('.combo_text').text('Confirmez votre combinaison');
+
     var button_set = $('.combo_set');
     var button_reset = $('.combo_reset');
     var button_validate = $('.combo_validate');
+    var invalid = false;
 
     button_set.unbind("click");
     button_reset.unbind("click");
@@ -187,6 +200,8 @@ $(function () {
 
     var temp_origin = null;
     var temp_orientations = [];
+
+
 
     button_set.on("click", function(){
       var orient = getOrientation();
@@ -198,8 +213,15 @@ $(function () {
         //  on transforme orient en offset avant de les stocker
         orient.alpha -= origin.alpha;
         orient.beta -= origin.beta;
+        orient.alpha = parseInt(orient.alpha);
+        orient.beta = parseInt(orient.beta);
+
 
         temp_orientations.push(orient);
+      }
+
+      if(temp_orientations.length > 2){
+        button_validate.prop('disabled', false);
       }
     });
 
@@ -211,31 +233,44 @@ $(function () {
     button_validate.on("click", function(){
       var offset = 15;
 
-      var invalid = false;
-
-      if(origin.length == temp_origin.length){
-        for(var i = 0; i < origin.length; i++){
+      if(orientations.length == temp_orientations.length){
+        for(var i = 0; i < orientations.length; i++){
+          alert(orientations[i].alpha);
           if( 
-            origin[i]-temp_origin[i] < -offset 
-            || origin[i]-temp_origin[i] > offset
+            orientations[i].alpha-temp_orientations[i].alpha < -offset 
+            || orientations[i].alpha-temp_orientations[i].alpha > offset 
+            || orientations[i].beta-temp_orientations[i].beta < -offset 
+            || orientations[i].beta-temp_orientations[i].beta > offset
             )
           {
               invalid = true;
+              alert("validation erronée");
               break;
+          }
+          else{
+            //alert("probably right");
           }
         }
       }
       else{
         invalid = true;
       }
+
       
-      if( invalid === false){
+      
+      if( invalid == false){
         //  sauvegarde du combo
+        //  Send combo
+        var message = { "type" : "createCombo", "pseudo" : pseudo, "orientations" : orientations };
+        connection.send(JSON.stringify(message));
       }
       else{
         temp_orientations = [];
         temp_origin = null;
         //  try again
+        $('.debug').html('essaies encore.');
+        invalid = false;
+        button_validate.prop('disabled', true);
       }
       
 
@@ -243,11 +278,74 @@ $(function () {
 
   };
 
+  var comboLogin = function(){
+    orientations = [];
+    var combo_container = $('<div class="container combo"></div>');
+    var text = $('<div class="combo_text">Connexion</div>');
+    var button_set = $('<button class="combo_set">Choisir</button>');
+    var button_reset = $('<button class="combo_reset">Recommencer</button>');
+    var button_validate = $('<button disabled="disabled" class="combo_validate">Valider</button>');
+    var debug = $('<div class="debug"></div>');
+
+    combo_container.append(text);
+    combo_container.append(button_set);
+
+    button_set.on("click", function(){
+      var orient = getOrientation();
+      window.navigator.vibrate(100);
+      if( origin === null ){
+        origin = orient;
+      }
+      else{
+        //  on transforme orient en offset avant de les stocker
+        orient.alpha -= origin.alpha;
+        orient.beta -= origin.beta;
+        orient.alpha = parseInt(orient.alpha);
+        orient.beta = parseInt(orient.beta);
+
+
+        orientations.push(orient);
+      }
+
+      if(orientations.length > 2){
+        button_validate.prop('disabled', false);
+      }
+
+      debug.append('<div>'+parseInt(orient.alpha, 10)+' : '+parseInt(orient.beta, 10)+'</div>');
+    });
+    button_reset.on("click", function(){
+      orientations = [];
+      origin = null;
+      button_validate.prop('disabled', true);
+    });
+
+    // Envoi du combo
+    button_validate.on("click", function(){
+
+      
+      button_validate.prop('disabled', true);
+      var combo = JSON.stringify(orientations);
+
+      var message = { "type" : "comboLogin", "pseudo" : pseudo, "combo" : combo };
+      connection.send(JSON.stringify(message));
+      
+
+    });
+
+    combo_container.append(button_reset);
+    combo_container.append(button_validate);
+    combo_container.append(debug);
+
+
+    //$('.container').addClass('hidden');
+    $('.container').html(combo_container);
+  };
+
 
 
   // open connection
   var connection = new WebSocket('ws://192.168.43.175:1337');
-  var connection = new WebSocket('ws://127.0.0.1:1337');
+  //var connection = new WebSocket('ws://127.0.0.1:1337');
   connection.onopen = function () {
     // first we want users to enter their names
     console.log("opened");
@@ -310,14 +408,23 @@ $(function () {
 
     }
     else if(json.type === 'signIn'){
+
+      //  add user ability to enter combo
+      var canCombo = false;
+      if(current_y !== null && current_x !== null){
+        canCombo = true;
+      }
+ 
       $('.container').html('');
       var title = $('<h2>Connexion</h2>');
+      var form = $('<form name="connexion"></form>');
       var passinput = $('<div><input class="pass" type="password" name="password" placeholder="Mot de passe" /></div>');
 
       var submitButton = $('<div><button>Envoyer</button></div>');
 
-      submitButton.on("click", function(){
-        var message = { "type" : "password", "pseudo" : pseudo, "pass" : $(".pass").val() };
+      form.on("submit", function(e){
+        e.preventDefault();
+        var message = { "type" : "password", "pseudo" : pseudo, "password" : $(".pass").val() };
         connection.send(JSON.stringify(message));
         console.log(message);
       });
@@ -325,8 +432,20 @@ $(function () {
       console.log("signIn");
 
       $(".container").append(title);
-      $(".container").append(passinput);
-      $(".container").append(submitButton);
+      form.append(passinput);
+      //  Si un user possède un combo et que le client peut entrer un combo, on le propose.
+      if(json.canCombo){
+        var comboButton = $('<div><button class="comboButton" type="button">Entrer une combinaison</button></div>');
+        form.append(comboButton);
+        comboButton.on("click", function(){
+
+          comboLogin();
+        });
+
+      }
+
+      form.append(submitButton);
+      $(".container").append(form);
     }
     else if(json.type === 'askCombo'){
        comboCreate();
@@ -420,11 +539,15 @@ $(function () {
       question_header.text(json.round.question.question_type.text);
       div_header.append(question_header);
 
+      game_window.append(div_header);
+      
+
       //  question_type 2 affiche une image
       if( json.round.question.question_type.id == 2 ){
         var img = $("<img></img>");
-        img.attr("src", "http://v2.com/img/"+json.round.question.image);
+        img.attr("src", host+"/img/"+json.round.question.image);
 
+        game_window.append(div_question);
         div_question.append(img);
 
 
@@ -461,8 +584,7 @@ $(function () {
         div_answers_container.append(div_answer);
       }
 
-      game_window.append(div_header);
-      game_window.append(div_question);
+      
       game_window.append(div_answers);
 
     }
